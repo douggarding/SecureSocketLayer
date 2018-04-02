@@ -28,26 +28,26 @@ public class SSLClient {
 
 		// Establish connection with the server
 		InetAddress host = InetAddress.getLocalHost();
-		int port = 8486;
+		int port = 8490;
 		Socket clientSocket = new Socket(host.getHostName(), port);
 		DataInputStream inputStream = new DataInputStream(clientSocket.getInputStream()); // Read from this
 		DataOutputStream outputStream = new DataOutputStream(clientSocket.getOutputStream()); // Write to this
 		
 		// ------------------- HANDSHAKE -------------------
 		
-		// Send CERT{K+}, 
+		// Send CERT{CK+}, 
 		System.out.println("HANDSHAKE: CERT{K+}");
 		CertificateFactory certFactory = CertificateFactory.getInstance ("X.509"); // Certificate factory
 		FileInputStream certFileInputStream = new FileInputStream("clientKeys/sslCertSigned.cert"); // To read certificate
 		clientCert = certFactory.generateCertificate (certFileInputStream); // Get client's certificate
-		System.out.println (clientCert.toString());
+		//System.out.println (clientCert.toString());
 
 		clientPublicKey = clientCert.getPublicKey(); // Collect the client's public key
 		outputStream.write(clientCert.getEncoded()); // Send the certificate to the server
 		outputStream.flush();
 		
-		
 		// Receive CERT-{K+}, KEY-{NONCE1}
+		
 		
 		// Send KEY-{NONCE2}
 		
