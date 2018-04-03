@@ -7,6 +7,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
@@ -169,5 +170,71 @@ public class Handshake {
 		byte[] nonce = cipher.doFinal(serverEncryptedNonce);
 		return nonce;
 	}
+	
+	
+	/**
+	 * Generates a Hashed Mutual-Authentication-Code. The hash function takes the following items
+	 * in the following order, as is done by this particular SSL protocol: client's public key, 
+	 * server's public key, server's un-encrypted nonce, and the client's un-encrypted nonce.
+	 * A string is also used at the end that represents the sender of the hash ("CLIENT" or "SERVER).
+	 * 
+	 * @param clientKey
+	 * @param serverKey
+	 * @param clientNonce
+	 * @param serverNonce
+	 * @param sender
+	 * @return
+	 * @throws NoSuchAlgorithmException
+	 */
+	static byte[] HMAC(PublicKey clientKey, PublicKey serverKey, byte[] clientNonce, byte[] serverNonce, String sender) throws NoSuchAlgorithmException {
+		
+		MessageDigest messageDigest = MessageDigest.getInstance("SHA-1");
+		
+		messageDigest.update(clientKey.getEncoded()); // Message 1 (client key)
+		messageDigest.update(serverKey.getEncoded()); // Message 2 (server key)
+		messageDigest.update(serverNonce); // Message 3 (Servers non-encrypted nonce)
+		messageDigest.update(clientNonce); // Message 4 (Clients non-encrypted nonce)
+		messageDigest.update(sender.getBytes()); 
+		
+		return messageDigest.digest();
+	}
 
+	/**
+	 * Verifies that an incoming HMAC is correct, verifying the sender.
+	 * 
+	 * @param clientPublicKey - For comparing incoming HMAC
+	 * @param serverPublicKey - For comparing incoming HMAC
+	 * @param clientNonce - For comparing incoming HMAC
+	 * @param serverNonce - For comparing incoming HMAC
+	 * @param sender - For comparing incoming HMAC, should be "SERVER" if incoming HMAC was from
+	 * the server, or should be "CLIENT" if the incoming HMAC is from the client.
+	 * @param inputStream - Stream that the HMAC is being recieved on.
+	 * @return
+	 * @throws IOException
+	 * @throws NoSuchAlgorithmException
+	 */
+	public static boolean verifyIncomingHMAC(PublicKey clientPublicKey, PublicKey serverPublicKey, byte[] clientNonce,
+			byte[] serverNonce, String sender, DataInputStream inputStream) throws IOException, NoSuchAlgorithmException {
+		
+		byte[] expectedServerHMAC = Handshake.HMAC(clientPublicKey, serverPublicKey, clientNonce, serverNonce, sender);
+		int macSize = inputStream.readInt();
+		byte[] serverHMAC = new byte[macSize];
+		inputStream.read(serverHMAC);
+		
+		boolean verified = Arrays.equals(serverHMAC, expectedServerHMAC);
+		return verified;
+	}
+	
+	/**
+	 * Helper method to send a byte array across a DataOutputStream.
+	 * 
+	 * @param outputStream - stream to which data will be written.
+	 * @param data - byte[] of data to be sent
+	 * @throws IOException
+	 */
+	static void sendData(DataOutputStream outputStream, byte[] data) throws IOException {
+		outputStream.writeInt(data.length);
+		outputStream.write(data);
+		outputStream.flush();
+	}
 }
