@@ -26,7 +26,7 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
 public class Handshake {
-
+	
 	/**
 	 * Extracts the servers private key from the supplied private key file.
 	 * 
