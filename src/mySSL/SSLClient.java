@@ -43,7 +43,7 @@ import java.security.cert.Certificate;
 
 public class SSLClient {
 
-	private static int port = 8480;
+	private static int port = 8485;
 	private static int sequenceNumber = 0;
 
 	// Handshake variables
@@ -133,42 +133,60 @@ public class SSLClient {
 		clientMACKey = keyGenerator.generateKey(); // Session MAC key for data sent from client to server
 
 		// Create the data input cipher and stream
-		Cipher dataInputCipher = Cipher.getInstance("DESede/ECB/NoPadding");
-		dataInputCipher.init(Cipher.DECRYPT_MODE, serverEncKey);
-		CipherInputStream cipherInputStream = new CipherInputStream(inputStream, dataInputCipher);
+		Cipher decryptionCipher = Cipher.getInstance("DESede/ECB/PKCS5Padding");
+		decryptionCipher.init(Cipher.DECRYPT_MODE, serverEncKey);
 
-		// READ DATA FROM THE SERVER
-		int bytesRead = 0;
-		int bytesToRead = inputStream.readInt();
-		System.out.println("Number of data bytes: " + bytesToRead);
-		byte[] dataBuffer = new byte[bytesToRead + (8 - bytesToRead % 8)]; // 6 added because cipher needs bytes by groups of 8
-		// Read data bytes from the stream into the buffer
-		while(bytesRead < bytesToRead) {
-			bytesRead = inputStream.read(dataBuffer, bytesRead, bytesToRead - bytesRead);
+		byte[] data;
+		FileOutputStream fileOutputStream = new FileOutputStream("MobyDick3.txt");
+		
+		while(inputStream.available() > 0) {
+			
+			// READ DATA FROM THE SERVER
+			int bytesRead = 0;
+			int bytesToRead = inputStream.readInt();
+			System.out.println("Number of bytes to read: " + bytesToRead);
+			byte[] dataBuffer = new byte[bytesToRead];
+			// Read data bytes from the stream into the buffer
+			while(bytesRead < bytesToRead) {
+				bytesRead = inputStream.read(dataBuffer, bytesRead, bytesToRead - bytesRead);
+			}
+			
+			// Decrypt Data
+			System.out.println("Number of bytes in encrypted data: " + dataBuffer.length);
+			byte[] decrypted = decryptionCipher.doFinal(dataBuffer);
+			System.out.println("Number of bytes in decrypted data: " + decrypted.length);
+			
+			// Separate MAC and data
+			byte[] receivedData = Arrays.copyOfRange(decrypted, 0, decrypted.length - 20);
+			byte[] receivedMac = Arrays.copyOfRange(decrypted, decrypted.length - 20, decrypted.length);
+			System.out.println("Received Data Size: " + receivedData.length);
+			System.out.println("Received Mac Size: " + receivedMac.length);
+			
+			// Compute expected HMAC
+			Mac mac = Mac.getInstance("HmacSHA1"); // Create the Mac object
+			mac.init(serverMACKey); // Initialize the mac using the server's MAC key
+			mac.update(Handshake.IntToByteArray(++sequenceNumber)); // Add the sequence number to the mac
+			mac.update(receivedData); // Add the data to the mac
+			byte[] expectedMac = mac.doFinal(); // Create the mac
+			
+			// Verify the received and expected MACs
+			System.out.println("Received HMAC: " + Arrays.toString(receivedMac));
+			System.out.println("Expected HMAC: " + Arrays.toString(expectedMac));
+			
+			boolean areMacsEqual = Arrays.equals(receivedMac, expectedMac);
+			if(areMacsEqual)
+				System.out.println("HMAC's were equal, data integrity confirmed.");
+			else
+				System.out.println("HMAC's were not equal, data integrity check failed.");
+			
+			// Write data to file
+			fileOutputStream.write(receivedData);
 		}
+
 		
-		// Decrypt the buffer full of data
-		byte[] decrypted = dataInputCipher.doFinal(dataBuffer);
-
-		System.out.println("Number of data bytes decrypted: " + decrypted.length);
-
-		FileOutputStream ofs = new FileOutputStream("MobyDick3.txt");
-		ofs.write(decrypted);
+		fileOutputStream.flush();
+		fileOutputStream.close();
 		
-		int macLength = inputStream.readInt();
-		System.out.println("MAC LENGTH: " + macLength);
-		byte[] incomingRecordMac = new byte[macLength];
-		cipherInputStream.read(incomingRecordMac);
-
-		// Verify the MAC
-		Mac mac = Mac.getInstance("HmacSHA1"); // Create the Mac object
-		mac.init(serverMACKey); // Initialize the mac using the server's MAC key
-		mac.update(Handshake.IntToByteArray(++sequenceNumber)); // Add the sequence number to the mac
-		mac.update(dataBuffer); // Add the data to the mac
-		byte[] secondRecordMac = mac.doFinal(); // Create the mac
-
-		System.out.println(incomingRecordMac.length + " " + secondRecordMac.length);
-		System.out.println(Arrays.equals(incomingRecordMac, secondRecordMac));
 	}
 
 }

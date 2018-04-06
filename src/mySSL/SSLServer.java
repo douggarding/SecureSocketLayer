@@ -4,31 +4,24 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
+
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.SignatureException;
 import java.security.InvalidKeyException;
-import java.security.KeyFactory;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.Arrays;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.CipherOutputStream;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
@@ -37,7 +30,7 @@ import javax.crypto.SecretKey;
 
 public class SSLServer {
 
-	private static int port = 8480;
+	private static int port = 8485;
 	private static int sequenceNumber = 0;
 	
 	private static PublicKey serverPublicKey;
@@ -125,7 +118,7 @@ public class SSLServer {
 		byte[] fileBuffer = new byte[(int) file.length()]; // Create byte array for data
 		FileInputStream fis = new FileInputStream(file); // Turn file into input stream
 		fis.read(fileBuffer); // Put actual data from file into the byte array
-		System.out.println("Data File Buffer Size: " + fileBuffer.length);;
+		System.out.println("Data File Buffer Size: " + fileBuffer.length + "\n");;
 		
 		// Process data as segments no longer than 16384 bytes (16KB).
 		for(int i = 0; i < fileBuffer.length; i+=16_384) {
@@ -150,26 +143,27 @@ public class SSLServer {
 			System.out.println("Data HMAC Size: " + dataHMAC.length);
 			
 			// Create the data output cipher
-			Cipher dataOutputCipher = Cipher.getInstance("DESede/ECB/PKCS5Padding");
-			dataOutputCipher.init(Cipher.ENCRYPT_MODE, serverEncKey);
+			Cipher encryptionCipher = Cipher.getInstance("DESede/ECB/PKCS5Padding");
+			encryptionCipher.init(Cipher.ENCRYPT_MODE, serverEncKey);
 			// Encrypt the data + MAC
-			dataOutputCipher.update(dataBuffer);
-			dataOutputCipher.update(dataHMAC);
-			byte[] encryptedData = dataOutputCipher.doFinal();
+			byte[] dataAndMac = Arrays.copyOf(dataBuffer, dataBuffer.length + dataHMAC.length);
+			for(int j = 0; j < dataHMAC.length; j++) {
+				dataAndMac[j + dataBuffer.length] = dataHMAC[j];
+			}
+			System.out.println("Data and HMCA joined: " + Arrays.toString(dataAndMac));
+			byte[] encryptedData = encryptionCipher.doFinal(dataAndMac);
 			
 			System.out.println("Data Encrypted Size " + encryptedData.length + "\n");
+			
+			// Send the data to the client
+			outputStream.writeInt(encryptedData.length);
+			outputStream.write(encryptedData);
+			outputStream.flush();
+			
+
 		}
 		
-		// Send the data to the client 
-		/*
-		System.out.println("FILE BYTE ARRAY SIZE " + fileBuffer.length);
-		outputStream.writeInt(fileBuffer.length); // Send length of DATA
-		cipherOutputStream.write(fileBuffer);
-		cipherOutputStream.flush();
-		outputStream.writeInt(dataHMAC.length); // Send length of record HMAC
-		cipherOutputStream.write(dataHMAC);
-		
-		*/
+
 		System.out.println("Shutting down server");
 	}
 
