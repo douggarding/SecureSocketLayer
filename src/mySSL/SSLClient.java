@@ -10,6 +10,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -30,8 +31,11 @@ import java.util.Arrays;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
@@ -39,7 +43,10 @@ import java.security.cert.Certificate;
 
 public class SSLClient {
 
-	private static int port = 8492;
+	private static int port = 8480;
+	private static int sequenceNumber = 0;
+
+	// Handshake variables
 	private static PublicKey serverPublicKey;
 	private static PublicKey clientPublicKey;
 	private static Certificate clientCertificate;
@@ -48,6 +55,12 @@ public class SSLClient {
 	private static byte[] serverNonce;
 	private static byte[] clientNonce;
 	private static byte[] masterKey;
+
+	// Data transfer variables
+	private static SecretKey serverEncKey;
+	private static SecretKey serverMACKey;
+	private static SecretKey clientEncKey;
+	private static SecretKey clientMACKey;
 
 	public static void main(String[] args)
 			throws IOException, ClassNotFoundException, InterruptedException, CertificateException,
@@ -105,19 +118,57 @@ public class SSLClient {
 		Handshake.sendData(outputStream, hMAC);
 		System.out.println("---> Client sent HMAC to server");
 
-		// Create four sub-keys
-		// Look into CipherOutputStream for sending messages
-		SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
-		random.setSeed(masterKey); // s is the master secret
+		// ------------------- RECEIVE DATA -------------------
 
+		// Create four sub-keys (Will be same on both sides when seeded with same master
+		// key)
+		SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
+		random.setSeed(masterKey);
 		KeyGenerator keyGenerator = KeyGenerator.getInstance("DESede");
 		keyGenerator.init(random);
 
-		SecretKey clientAuthKey = keyGenerator.generateKey();
-		SecretKey serverAuthKey = keyGenerator.generateKey();
-		SecretKey clientEncKey = keyGenerator.generateKey();
-		SecretKey serverEncKey = keyGenerator.generateKey();
+		serverEncKey = keyGenerator.generateKey(); // Session encryption for data sent from server to client
+		serverMACKey = keyGenerator.generateKey(); // Session MAC key for data sent from server to client
+		clientEncKey = keyGenerator.generateKey(); // Session encryption for data sent from client to server
+		clientMACKey = keyGenerator.generateKey(); // Session MAC key for data sent from client to server
+
+		// Create the data input cipher and stream
+		Cipher dataInputCipher = Cipher.getInstance("DESede/ECB/NoPadding");
+		dataInputCipher.init(Cipher.DECRYPT_MODE, serverEncKey);
+		CipherInputStream cipherInputStream = new CipherInputStream(inputStream, dataInputCipher);
+
+		// READ DATA FROM THE SERVER
+		int bytesRead = 0;
+		int bytesToRead = inputStream.readInt();
+		System.out.println("Number of data bytes: " + bytesToRead);
+		byte[] dataBuffer = new byte[bytesToRead + (8 - bytesToRead % 8)]; // 6 added because cipher needs bytes by groups of 8
+		// Read data bytes from the stream into the buffer
+		while(bytesRead < bytesToRead) {
+			bytesRead = inputStream.read(dataBuffer, bytesRead, bytesToRead - bytesRead);
+		}
 		
+		// Decrypt the buffer full of data
+		byte[] decrypted = dataInputCipher.doFinal(dataBuffer);
+
+		System.out.println("Number of data bytes decrypted: " + decrypted.length);
+
+		FileOutputStream ofs = new FileOutputStream("MobyDick3.txt");
+		ofs.write(decrypted);
+		
+		int macLength = inputStream.readInt();
+		System.out.println("MAC LENGTH: " + macLength);
+		byte[] incomingRecordMac = new byte[macLength];
+		cipherInputStream.read(incomingRecordMac);
+
+		// Verify the MAC
+		Mac mac = Mac.getInstance("HmacSHA1"); // Create the Mac object
+		mac.init(serverMACKey); // Initialize the mac using the server's MAC key
+		mac.update(Handshake.IntToByteArray(++sequenceNumber)); // Add the sequence number to the mac
+		mac.update(dataBuffer); // Add the data to the mac
+		byte[] secondRecordMac = mac.doFinal(); // Create the mac
+
+		System.out.println(incomingRecordMac.length + " " + secondRecordMac.length);
+		System.out.println(Arrays.equals(incomingRecordMac, secondRecordMac));
 	}
 
 }
