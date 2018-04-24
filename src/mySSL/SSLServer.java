@@ -30,7 +30,7 @@ import javax.crypto.SecretKey;
 
 public class SSLServer {
 
-	public static int port = 8485;
+	public static int port = 8481;
 	private static int sequenceNumber = 0;
 	
 	private static PublicKey serverPublicKey;
@@ -159,7 +159,6 @@ public class SSLServer {
 			outputStream.writeInt(encryptedData.length);
 			outputStream.write(encryptedData);
 			outputStream.flush();
-			
 
 		}
 		

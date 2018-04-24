@@ -46,7 +46,7 @@ public class SSLClient {
 
 	private static int sequenceNumber = 0;
 	private static Socket clientSocket;
-	public static int port = 8485;
+	public static int port = 8481;
 
 	// Handshake variables
 	private static PublicKey serverPublicKey;
@@ -232,6 +232,15 @@ public class SSLClient {
 			return;
 		}
 
+		// Sleep for just a small amount of time, otherwise the client sometimes closes
+		// before the server has a chance to transfer the file.
+		try {
+			Thread.sleep(200);
+		} catch (InterruptedException e2) {
+			// TODO Auto-generated catch block
+			e2.printStackTrace();
+		}
+		
 		// Loop for collecting and processing data from the server
 		try {
 			while (inputStream.available() > 0) {
